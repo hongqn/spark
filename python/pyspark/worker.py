@@ -24,6 +24,8 @@ import sys
 import time
 import socket
 import traceback
+import zipfile
+import tempfile
 
 from pyspark.accumulators import _accumulatorRegistry
 from pyspark.broadcast import Broadcast, _broadcastRegistry
@@ -43,9 +45,28 @@ def report_times(outfile, boot, init, finish):
     write_long(int(1000 * finish), outfile)
 
 
+def unzip_egg_if_not_zip_safe(egg_path):
+    with zipfile.ZipFile(egg_path) as zf:
+        try:
+            zf.getinfo('EGG-INFO/not-zip-safe')
+        except Exception:
+            # No not-zip-safe marker.  Keep egg file
+            return
+
+        tmpdir = tempfile.mktemp(dir=os.path.dirname(egg_path))
+        os.mkdir(tmpdir)
+        zf.extractall(tmpdir)
+
+    # replace egg file with unpacked directory
+    os.remove(egg_path)
+    os.rename(tmpdir, egg_path)
+
+
 def add_path(path):
     # worker can be used, so donot add path multiple times
     if path not in sys.path:
+        if path.endswith('.egg'):
+            unzip_egg_if_not_zip_safe(path)
         # overwrite system packages
         sys.path.insert(1, path)
 
